@@ -1,8 +1,13 @@
+use tree_sitter::Node;
+use tree_sitter::QueryCursor;
+use tree_sitter::Query;
+use tree_sitter::Point;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::TextureQuery;
+use tree_sitter::Parser;
 
 use crate::RenderContext;
 use crate::mode::MajorMode;
@@ -164,21 +169,8 @@ fn run(context: &mut RenderContext) -> Result<(), String> {
         lines: lines,
     };
 
-    content.faces[0][0] = FontFace {
-        bg_color: FontColor::Rgb(255, 0, 0),
-        fg_color: FontColor::Default,
-    };
-    content.faces[0][1] = FontFace {
-        bg_color: FontColor::Rgb(255, 0, 0),
-        fg_color: FontColor::Default,
-    };
-    content.faces[0][2] = FontFace {
-        bg_color: FontColor::Rgb(255, 0, 0),
-        fg_color: FontColor::Default,
-    };
-
     let mut minor_modes: Vec<Box<dyn TextMinorMode>> = vec!(
-        // Box::new(RustMode {}),
+        Box::new(RustMode::new()),
     );
 
     for minor_mode in &mut minor_modes {
@@ -218,42 +210,71 @@ impl MajorMode for TextMode  {
     }
 }
 
-// pub struct RustMode {
-// }
+pub struct RustMode {
+    ts_parser: Parser,
+}
 
-// impl TextMinorMode for RustMode {
-//     fn modify(&mut self, content: &mut TextContent) {
-//         for i in 0..content.lines.len() {
-//             let mut segments = vec!();
+impl RustMode {
+    fn new() -> RustMode {
+        let mut parser = Parser::new();
+        parser.set_language(tree_sitter_rust::language()).expect("Error loading Rust grammar");
 
-//             let (face, line): String = content.lines[i].clone();
 
-//             if line.starts_with("use ") {
-//                 segments.push((
-//                     FontFace {
-//                         fg_color: FontColor::Rgb(255, 150, 150),
-//                         bg_color: FontColor::Rgb(0, 100, 0),
-//                     },
-//                     "use ".to_string()
-//                 ));
-//                 segments.push((
-//                     FontFace {
-//                         fg_color: FontColor::Default,
-//                         bg_color: FontColor::Default,
-//                     },
-//                     line[4..]
-//                 ));
-//             } else {
-//                 segments.push((
-//                     FontFace {
-//                         fg_color: FontColor::Default,
-//                         bg_color: FontColor::Default,
-//                     },
-//                     line
-//                 ));
-//             }
+        RustMode {
+            ts_parser: parser
+        }
+    }
+} // end impl RustMode
 
-//             content.lines[i] = segments;
-//         }
-//     }
-// }
+impl TextMinorMode for RustMode {
+    // TODO: Use an "on change" hook
+    fn modify(&mut self, content: &mut TextContent) {
+        let tree = self.ts_parser.parse_with(&mut |_byte: usize, position: Point| -> &[u8] {
+            let row = position.row as usize;
+            let column = position.column as usize;
+            if row < content.lines.len() {
+                if column < content.lines[row].as_bytes().len() {
+                    &content.lines[row].as_bytes()[column..]
+                } else {
+                    "\n".as_bytes()
+                }
+            } else {
+                &[]
+            }
+        }, None).unwrap();
+
+        let highlight_query = Query::new(tree_sitter_rust::language(), tree_sitter_rust::HIGHLIGHT_QUERY).unwrap();
+        let mut cursor = QueryCursor::new();
+
+        let text_callback = |node: Node| {
+            let start = node.start_position();
+            let end = node.end_position();
+
+            content.lines[start.row][start.column..end.column].as_bytes()
+        };
+
+        // FIXME: Hideous for now
+        let mut face_changes: Vec<(usize, usize, FontFace)> = vec!();
+
+        for m in cursor.matches(&highlight_query, tree.root_node(), text_callback) {
+            for qc in m.captures {
+                let node = qc.node;
+                let start_pos = node.start_position();
+                let end_pos = node.end_position();
+
+                for col in start_pos.column..end_pos.column {
+                    if m.pattern_index == 47 {
+                        face_changes.push((start_pos.row, col, FontFace {
+                            fg_color: FontColor::Rgb(255, 100, 100),
+                            bg_color: FontColor::Default,
+                        }));
+                    }
+                }
+            }
+        }
+
+        for (row, col, face) in face_changes {
+            content.faces[row][col] = face;
+        }
+    }
+}

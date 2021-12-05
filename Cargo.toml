@@ -6,8 +6,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+tree-sitter = "0.19.*"
+tree-sitter-rust = "0.19.*"
 
 [dependencies.sdl2]
 version = "0.35"
 default-features = false
 features = ["ttf", "image", "gfx"]
+
+[build-dependencies]
+cc="*"
