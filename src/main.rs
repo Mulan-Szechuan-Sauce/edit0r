@@ -18,12 +18,13 @@ pub struct RenderContext<'a> {
 }
 
 fn main() -> Result<(), String> {
+    println!("test");
     let sdl_context = sdl2::init()?;
     let video_subsys = sdl_context.video()?;
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
 
-    static SCREEN_WIDTH: u32 = 800;
-    static SCREEN_HEIGHT: u32 = 600;
+    static SCREEN_WIDTH: u32 = 1000;
+    static SCREEN_HEIGHT: u32 = 800;
     let window = video_subsys
         .window("edit0r", SCREEN_WIDTH, SCREEN_HEIGHT)
         .position_centered()

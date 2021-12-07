@@ -38,12 +38,6 @@ impl Default for FontFace {
     }
 }
 
-pub struct LineSegment {
-    row: usize,
-    col_begin: usize,
-    col_end: usize,
-}
-
 // TODO: Add margins
 pub struct TextContent {
     // Dumb character by character face mapping
@@ -60,11 +54,11 @@ macro_rules! rect(
 
 fn draw_segment(
     context: &mut RenderContext,
-    x_offset: u32,
+    x_offset: usize,
     y_offset: u32,
     face: &FontFace,
     text: &str
-) -> Result<u32, String> {
+) -> Result<(), String> {
     let fg_color = match &face.fg_color {
         FontColor::Default      => Color::RGB(255, 255, 255),
         FontColor::Rgb(r, g, b) => Color::RGB(*r, *g, *b),
@@ -82,7 +76,7 @@ fn draw_segment(
         .map_err(|e| e.to_string())?;
 
     let TextureQuery { width, height, .. } = texture.query();
-    let target = rect!(x_offset, y_offset, width, height);
+    let target = rect!(x_offset as u32, y_offset, width, height);
 
     match &face.bg_color {
         FontColor::Rgb(r, g, b) => {
@@ -93,7 +87,7 @@ fn draw_segment(
     };
 
     context.canvas.copy(&texture, None, Some(target))?;
-    Ok(x_offset + width)
+    Ok(())
 }
 
 // Returns the height of the rendered line
@@ -103,27 +97,28 @@ fn draw_line(
     faces: &Vec<FontFace>,
     line: &String,
 ) -> Result<u32, String> {
-    let mut x_offset = 0;
     let mut current_face: &FontFace = &Default::default();
 
     if line.len() != faces.len() {
         panic!("Line length must equal face length");
     }
 
-    let mut segment_start = 0;
-    let mut segment_len = 0;
+    let mut segment_start: usize = 0;
+    let mut segment_len: usize = 0;
+
+    let (char_width, char_height) = context.font.size_of_char('a').unwrap();
 
     for col in 0..line.len() {
         let char_face = &faces[col];
+        segment_len += 1;
 
-        if char_face == current_face {
-            segment_len += 1;
-        } else {
-            if segment_len > 0 {
-                x_offset += draw_segment(
-                    context, x_offset, y_offset, current_face,
-                    &line[segment_start..segment_start + segment_len + 1])?;
-            }
+        if char_face != current_face {
+            draw_segment(
+                context,
+                segment_start * (char_width as usize),
+                y_offset,
+                current_face,
+                &line[segment_start..segment_start + segment_len])?;
 
             segment_len = 0;
             segment_start = col;
@@ -133,11 +128,14 @@ fn draw_line(
 
     if segment_len > 0 {
         draw_segment(
-            context, x_offset, y_offset, current_face,
+            context,
+            segment_start * (char_width as usize),
+            y_offset,
+            current_face,
             &line[segment_start..])?;
     }
 
-    Ok(context.font.size_of_char('a').unwrap().1)
+    Ok(char_height)
 }
 
 fn draw_content(context: &mut RenderContext, content: &TextContent) -> Result<(), String> {
@@ -226,6 +224,7 @@ impl RustMode {
     }
 } // end impl RustMode
 
+
 impl TextMinorMode for RustMode {
     // TODO: Use an "on change" hook
     fn modify(&mut self, content: &mut TextContent) {
@@ -256,6 +255,10 @@ impl TextMinorMode for RustMode {
         // FIXME: Hideous for now
         let mut face_changes: Vec<(usize, usize, FontFace)> = vec!();
 
+        for (id, name) in highlight_query.capture_names().iter().enumerate() {
+            println!("id: {}, name: {}", id, name)
+        }
+
         for m in cursor.matches(&highlight_query, tree.root_node(), text_callback) {
             for qc in m.captures {
                 let node = qc.node;
@@ -263,9 +266,29 @@ impl TextMinorMode for RustMode {
                 let end_pos = node.end_position();
 
                 for col in start_pos.column..end_pos.column {
-                    if m.pattern_index == 47 {
+                    if qc.index == 13 {
                         face_changes.push((start_pos.row, col, FontFace {
                             fg_color: FontColor::Rgb(255, 100, 100),
+                            bg_color: FontColor::Default,
+                        }));
+                    } else if qc.index == 1 {
+                        face_changes.push((start_pos.row, col, FontFace {
+                            fg_color: FontColor::Rgb(100, 100, 255),
+                            bg_color: FontColor::Default,
+                        }));
+                    } else if qc.index == 3 || qc.index == 4 {
+                        face_changes.push((start_pos.row, col, FontFace {
+                            fg_color: FontColor::Rgb(100, 255, 100),
+                            bg_color: FontColor::Default,
+                        }));
+                    } else if qc.index == 5 {
+                        face_changes.push((start_pos.row, col, FontFace {
+                            fg_color: FontColor::Rgb(255, 100, 255),
+                            bg_color: FontColor::Default,
+                        }));
+                    } else if qc.index == 15 {
+                        face_changes.push((start_pos.row, col, FontFace {
+                            fg_color: FontColor::Rgb(255, 255, 100),
                             bg_color: FontColor::Default,
                         }));
                     }
