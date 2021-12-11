@@ -18,7 +18,7 @@ pub struct RenderContext<'a> {
 }
 
 fn main() -> Result<(), String> {
-    println!("test");
+    println!("test"); // Wonderful comment
     let sdl_context = sdl2::init()?;
     let video_subsys = sdl_context.video()?;
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
